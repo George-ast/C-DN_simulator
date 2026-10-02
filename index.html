@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Інтерактивний симулятор CDN (Content Delivery Network)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            900: '#0e3746',
+                        },
+                        edge: '#10b981', // green
+                        origin: '#f59e0b', // amber
+                        user: '#3b82f6', // blue
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-panel-light {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        .pulse-ring {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: pulse-ring 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+        }
+        @keyframes pulse-ring {
+            to { box-shadow: 0 0 0 16px rgba(16, 185, 129, 0); }
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-cyan-500 selection:text-slate-950">
+
+<header class="border-b border-slate-800 bg-slate-900/80 sticky top-0 z-50 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center text-slate-950 font-bold text-xl shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid font-bold fa-network-wired"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
+                    CDN Simulator <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">v2.5 Pro</span>
+                </h1>
+                <p class="text-xs text-slate-400">Інтерактивний тренажер роботи Мереж Доставки Контенту</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <!-- Preset Scenarios Dropdown -->
+            <div class="relative inline-block text-left">
+                <select id="presetSelect" onchange="applyPreset(this.value)" class="bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-cyan-500 transition cursor-pointer">
+                    <option value="custom">⚙️ Довільний сценарій</option>
+                    <option value="tokyo-video">🌏 Токіо → Нью-Йорк (Важке Відео)</option>
+                    <option value="london-api">🌍 Лондон → Нью-Йорк (Швидкий API-запит)</option>
+                    <option value="sydney-web">🌏 Сідней → Нью-Йорк (Веб-сторінка + Кеш)</option>
+                    <option value="cache-miss">⚠️ Cache MISS (Холодний кеш на Edge)</option>
+                </select>
+            </div>
+
+            <button onclick="resetSimulation()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-rotate-left"></i> Скидання
+            </button>
+        </div>
+    </div>
+</header>
+
+<main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- TOP CONTROL PANEL: CDN TOGGLE & PRESET METRICS -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Toggle CDN switch section -->
+        <div class="lg:col-span-8 glass-panel rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 border border-slate-800">
+            <div class="flex items-center space-x-4">
+                <div id="statusBadge" class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl font-bold">
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-400 font-medium uppercase tracking-wider">Поточний режим мережі</div>
+                    <div id="modeTitle" class="text-xl font-bold text-slate-100">CDN увімкнено (Кешування на Edge)</div>
+                    <p id="modeDesc" class="text-xs text-slate-400 mt-0.5">Запити користувачів перехоплюються найближчим крайовим сервером (Edge POP).</p>
+                </div>
+            </div>
+
+            <!-- Custom Switch -->
+            <div class="flex items-center space-x-3 bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                <span class="text-xs font-medium text-slate-400 px-2" id="labelNoCdn">Без CDN</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="cdnToggle" checked class="sr-only peer" onchange="handleToggleCDN(this.checked)">
+                    <div class="w-14 h-7 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-cyan-500"></div>
+                </label>
+                <span class="text-xs font-semibold text-emerald-400 px-2" id="labelWithCdn">З CDN</span>
+            </div>
+        </div>
+
+        <!-- Quick Traffic Generation Box -->
+        <div class="lg:col-span-4 glass-panel rounded-2xl p-5 flex flex-col justify-between border border-slate-800">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Тестування відправки</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono" id="activePacketCount">Пакети: 0</span>
+            </div>
+            
+            <div class="flex items-center gap-2 mt-3">
+                <button onclick="sendSingleRequest()" id="btnSendOne" class="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20 active:scale-95">
+                    <i class="fa-solid fa-paper-plane"></i> 1 Запит
+                </button>
+                <button onclick="sendBurstRequests(10)" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs py-2.5 px-3 rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5 active:scale-95">
+                    <i class="fa-solid fa-burst"></i> 10 Запитів
+                </button>
+                <button id="btnStressTest" onclick="toggleStressTest()" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-xs py-2.5 px-3 rounded-xl border border-amber-500/30 transition flex items-center justify-center gap-1 active:scale-95">
+                    <i class="fa-solid fa-fire"></i> Стрес-тест
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NETWORK VISUALIZER CANVAS SECTION -->
+    <div class="glass-panel rounded-2xl p-6 relative overflow-hidden border border-slate-800 shadow-2xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-800/80 gap-2">
+            <div class="flex items-center space-x-2">
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                <h2 class="text-base font-bold text-slate-100">Карта взаємодії вузлів (Network Topology)</h2>
+            </div>
+            <div class="flex items-center space-x-4 text-xs">
+                <div class="flex items-center space-x-1.5 text-blue-400">
+                    <span class="w-3 h-3 rounded-full bg-blue-500/30 border border-blue-400 inline-block"></span>
+                    <span>Клієнт</span>
+                </div>
+                <div id="edgeLegend" class="flex items-center space-x-1.5 text-emerald-400">
+                    <span class="w-3 h-3 rounded-full bg-emerald-500/30 border border-emerald-400 inline-block"></span>
+                    <span>Edge CDN Server</span>
+                </div>
+                <div class="flex items-center space-x-1.5 text-amber-400">
+                    <span class="w-3 h-3 rounded-full bg-amber-500/30 border border-amber-400 inline-block"></span>
+                    <span>Origin Server</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Canvas Area -->
+        <div class="relative w-full h-80 my-2 rounded-xl bg-slate-950/70 border border-slate-800/80 overflow-hidden">
+            <canvas id="networkCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+            
+            <!-- Floating overlay info on top of canvas -->
+            <div class="absolute bottom-3 left-3 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-400 flex items-center gap-3">
+                <div>Гео-відстань: <span id="canvasDistance" class="text-cyan-400 font-bold">10,800 км</span></div>
+                <div>Фізична затримка (RTT): <span id="canvasRtt" class="text-amber-400 font-bold">160 мс</span></div>
+            </div>
+        </div>
+
+        <!-- Node Status Cards below canvas -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <!-- Client Card -->
+            <div class="bg-slate-900/80 p-3.5 rounded-xl border border-blue-500/20 flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 text-lg">
+                    <i class="fa-solid fa-laptop"></i>
+                </div>
+                <div class="flex-grow">
+                    <div class="text-xs text-slate-400">Користувач</div>
+                    <div id="nodeUserLocation" class="text-sm font-bold text-slate-200">Токіо, Японія</div>
+                    <div class="text-[11px] text-blue-400 font-mono mt-0.5" id="userIp">IP: 133.242.18.91</div>
+                </div>
+            </div>
+
+            <!-- Edge Server Card -->
+            <div id="edgeNodeCard" class="bg-slate-900/80 p-3.5 rounded-xl border border-emerald-500/20 flex items-center space-x-3 transition-all duration-300">
+                <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+                <div class="flex-grow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-slate-400">Крайовий вузол (Edge POP)</span>
+                        <span id="cacheBadge" class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-semibold">HIT</span>
+                    </div>
+                    <div id="nodeEdgeLocation" class="text-sm font-bold text-slate-200">Токіо Edge POP #4</div>
+                    <div class="text-[11px] text-emerald-400 font-mono mt-0.5" id="edgeIp">Затримка до клієнта: ~4 мс</div>
+                </div>
+            </div>
+
+            <!-- Origin Server Card -->
+            <div class="bg-slate-900/80 p-3.5 rounded-xl border border-amber-500/20 flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg">
+                    <i class="fa-solid fa-database"></i>
+                </div>
+                <div class="flex-grow">
+                    <div class="text-xs text-slate-400">Головний сервер (Origin)</div>
+                    <div id="nodeOriginLocation" class="text-sm font-bold text-slate-200">Нью-Йорк, США</div>
+                    <div class="text-[11px] text-amber-400 font-mono mt-0.5" id="originLoad">Завантаження CPU: 12%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIGURATION & PARAMETERS PANEL -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <!-- Client Location selector -->
+        <div class="glass-panel p-4 rounded-xl border border-slate-800">
+            <label class="block text-xs font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+                <i class="fa-solid fa-location-dot text-cyan-400"></i> Локація клієнта
+            </label>
+            <select id="userLocationSelect" onchange="updateSimulationParams()" class="w-full bg-slate-900 text-xs text-slate-200 border border-slate-700 rounded-lg p-2.5 outline-none focus:border-cyan-500">
+                <option value="tokyo">🇯🇵 Токіо (10,800 км від Origin)</option>
+                <option value="sydney">🇦🇺 Сідней (16,000 км від Origin)</option>
+                <option value="london">🇬🇧 Лондон (5,500 км від Origin)</option>
+                <option value="kyiv">🇺🇦 Київ (7,500 км від Origin)</option>
+                <option value="saopaulo">🇧🇷 Сан-Паулу (7,700 км від Origin)</option>
+            </select>
+        </div>
+
+        <!-- Origin Location selector -->
+        <div class="glass-panel p-4 rounded-xl border border-slate-800">
+            <label class="block text-xs font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+                <i class="fa-solid fa-server text-amber-400"></i> Головний сервер (Origin)
+            </label>
+            <select id="originLocationSelect" onchange="updateSimulationParams()" class="w-full bg-slate-900 text-xs text-slate-200 border border-slate-700 rounded-lg p-2.5 outline-none focus:border-amber-500">
+                <option value="ny">🇺🇸 Нью-Йорк (США)</option>
+                <option value="frankfurt">🇩🇪 Франкфурт (Німеччина)</option>
+            </select>
+        </div>
+
+        <!-- Payload File Type selector -->
+        <div class="glass-panel p-4 rounded-xl border border-slate-800">
+            <label class="block text-xs font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+                <i class="fa-solid fa-file-code text-emerald-400"></i> Тип контенту
+            </label>
+            <select id="payloadSelect" onchange="updateSimulationParams()" class="w-full bg-slate-900 text-xs text-slate-200 border border-slate-700 rounded-lg p-2.5 outline-none focus:border-emerald-500">
+                <option value="api">⚡ JSON API запит (15 КБ)</option>
+                <option value="webpage">📄 Веб-сторінка з фото (2.5 МБ)</option>
+                <option value="video">🎥 HD Відео Потік (25 МБ)</option>
+            </select>
+        </div>
+
+        <!-- CDN Cache Status selector -->
+        <div class="glass-panel p-4 rounded-xl border border-slate-800">
+            <label class="block text-xs font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+                <i class="fa-solid fa-memory text-purple-400"></i> Стан кешу CDN
+            </label>
+            <select id="cacheStatusSelect" onchange="updateSimulationParams()" class="w-full bg-slate-900 text-xs text-slate-200 border border-slate-700 rounded-lg p-2.5 outline-none focus:border-purple-500">
+                <option value="hit">✅ Cache HIT (Файл є на Edge)</option>
+                <option value="miss">❌ Cache MISS (Потрібно забрати з Origin)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- METRICS & WATERFALL ANALYTICS SECTION -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Key Metrics Cards (Left 4 cols) -->
+        <div class="lg:col-span-4 space-y-4">
+            <div class="glass-panel rounded-2xl p-5 border border-slate-800 space-y-4">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>Метрики продуктивності</span>
+                    <i class="fa-solid fa-gauge-high text-cyan-400"></i>
+                </h3>
+
+                <!-- Total Load Time Metric -->
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+                    <div class="text-xs text-slate-400">Загальний час завантаження (Total Time)</div>
+                    <div class="flex items-baseline space-x-2 mt-1">
+                        <span id="metricTotalTime" class="text-3xl font-extrabold font-mono text-cyan-400">-- ms</span>
+                        <span id="metricTimeSaved" class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">---</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1" id="timeCompareNote">Обчислення...</p>
+                </div>
+
+                <!-- TTFB Metric -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800">
+                        <div class="text-[11px] text-slate-400">TTFB (First Byte)</div>
+                        <div id="metricTtfb" class="text-xl font-bold font-mono text-emerald-400 mt-0.5">-- ms</div>
+                    </div>
+                    <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800">
+                        <div class="text-[11px] text-slate-400">RTT (Ping)</div>
+                        <div id="metricPing" class="text-xl font-bold font-mono text-blue-400 mt-0.5">-- ms</div>
+                    </div>
+                </div>
+
+                <!-- Origin Offload Metric -->
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-slate-400">Зниження навантаження на Origin:</span>
+                        <span id="offloadPercent" class="font-bold text-emerald-400 font-mono">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div id="offloadBar" class="bg-gradient-to-r from-emerald-500 to-cyan-400 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Waterfall Phase Breakdown (Right 8 cols) -->
+        <div class="lg:col-span-8 glass-panel rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-200">Waterfall — Розбір етапів завантаження (Network Timeline)</h3>
+                        <p class="text-xs text-slate-400">Поетапний розрахунок часу встановлення з'єднання та передачі даних</p>
+                    </div>
+                    <div class="text-xs font-mono bg-slate-900 px-3 py-1 rounded-lg text-cyan-400 border border-slate-800">
+                        Розмір: <span id="waterfallSizeText">2.5 MB</span>
+                    </div>
+                </div>
+
+                <!-- Waterfall items -->
+                <div class="space-y-3 mt-4 text-xs font-mono">
+                    <!-- Stage 1: DNS -->
+                    <div>
+                        <div class="flex justify-between text-slate-400 text-[11px] mb-1">
+                            <span>1. DNS Lookup (Пошук IP-адреси)</span>
+                            <span id="dnsTimeText" class="text-slate-200">0 ms</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden flex">
+                            <div id="dnsBar" class="bg-blue-500 h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stage 2: TCP Handshake -->
+                    <div>
+                        <div class="flex justify-between text-slate-400 text-[11px] mb-1">
+                            <span>2. TCP Handshake (SYN / SYN-ACK)</span>
+                            <span id="tcpTimeText" class="text-slate-200">0 ms</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden flex">
+                            <div id="tcpBar" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stage 3: TLS Negotiation -->
+                    <div>
+                        <div class="flex justify-between text-slate-400 text-[11px] mb-1">
+                            <span>3. TLS/SSL Handshake (Шифрування)</span>
+                            <span id="tlsTimeText" class="text-slate-200">0 ms</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden flex">
+                            <div id="tlsBar" class="bg-purple-500 h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stage 4: TTFB (Wait) -->
+                    <div>
+                        <div class="flex justify-between text-slate-400 text-[11px] mb-1">
+                            <span>4. TTFB / Processing (Очікування першого байта)</span>
+                            <span id="ttfbTimeText" class="text-slate-200">0 ms</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden flex">
+                            <div id="ttfbBar" class="bg-amber-500 h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stage 5: Content Download -->
+                    <div>
+                        <div class="flex justify-between text-slate-400 text-[11px] mb-1">
+                            <span>5. Content Download (Завантаження байтів контенту)</span>
+                            <span id="downloadTimeText" class="text-slate-200">0 ms</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden flex">
+                            <div id="downloadBar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Explanatory footer -->
+            <div id="waterfallSummary" class="mt-4 p-3 bg-slate-900/80 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-center gap-2">
+                <i class="fa-solid fa-lightbulb text-amber-400 text-base"></i>
+                <span>При використанні CDN всі важкі фази (TCP/TLS) відбуваються на мінімальній фізичній відстані від користувача (Edge POP).</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- REAL-TIME ORIGIN SERVER LOAD MONITOR & GRAPH -->
+    <div class="glass-panel rounded-2xl p-6 border border-slate-800">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-800 gap-2">
+            <div>
+                <h3 class="text-base font-bold text-slate-200">Моніторинг навантаження на Головний Сервер (Origin CPU & Traffic)</h3>
+                <p class="text-xs text-slate-400">Графік запитів, що надходять на Origin в реальному часі при навантаженні</p>
+            </div>
+            <div class="flex items-center space-x-3 text-xs">
+                <span class="flex items-center gap-1.5 text-amber-400">
+                    <span class="w-3 h-1 bg-amber-500 rounded"></span> Навантаження Origin (RPS)
+                </span>
+                <span class="flex items-center gap-1.5 text-emerald-400">
+                    <span class="w-3 h-1 bg-emerald-400 rounded"></span> Оброблено CDN (Edge)
+                </span>
+            </div>
+        </div>
+
+        <div class="h-52 w-full mt-4">
+            <canvas id="loadChart"></canvas>
+        </div>
+    </div>
+    <!-- EDUCATIONAL SECTION: GLOSSARY & BEFORE/AFTER TABLE -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- CDN Concept Glossary Cards (Left 7 cols) -->
+        <div class="lg:col-span-7 glass-panel rounded-2xl p-6 border border-slate-800 space-y-4">
+            <h3 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-graduation-cap text-cyan-400"></i> Базові поняття CDN
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <!-- Concept 1 -->
+                <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-cyan-500/30 transition">
+                    <div class="font-bold text-cyan-400 text-sm mb-1">Origin Server (Сервер-джерело)</div>
+                    <p class="text-slate-400 leading-relaxed">
+                        Основний сервер, де зберігаються першоджерела файлів сайту, база даних і виконується бізнес-логіка.
+                    </p>
+                </div>
+
+                <!-- Concept 2 -->
+                <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition">
+                    <div class="font-bold text-emerald-400 text-sm mb-1">Edge Server / POP (Крайовий вузол)</div>
+                    <p class="text-slate-400 leading-relaxed">
+                        Сервер CDN, розташований фізично близько до користувачів (у великих містах по всьому світі) для роздачі кешу.
+                    </p>
+                </div>
+
+                <!-- Concept 3 -->
+                <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-purple-400/30 transition">
+                    <div class="font-bold text-purple-400 text-sm mb-1">Cache HIT vs Cache MISS</div>
+                    <p class="text-slate-400 leading-relaxed">
+                        <strong class="text-emerald-400">HIT:</strong> файл знайдено в кеші Edge і відразу віддано.<br>
+                        <strong class="text-amber-400">MISS:</strong> файлу немає в кеші, Edge запитує його у Origin.
+                    </p>
+                </div>
+
+                <!-- Concept 4 -->
+                <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-amber-400/30 transition">
+                    <div class="font-bold text-amber-400 text-sm mb-1">DDoS Захист & Anycast</div>
+                    <p class="text-slate-400 leading-relaxed">
+                        CDN розподіляє паразитний трафік по сотнях серверів, не допускаючи падіння основного Origin-сервера.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Before / After Comparison Matrix (Right 5 cols) -->
+        <div class="lg:col-span-5 glass-panel rounded-2xl p-6 border border-slate-800">
+            <h3 class="text-base font-bold text-slate-200 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-code-compare text-emerald-400"></i> Порівняння: Без CDN vs З CDN
+            </h3>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400">
+                            <th class="py-2 px-2 font-medium">Критерій</th>
+                            <th class="py-2 px-2 font-medium text-amber-400">Пряме (Без CDN)</th>
+                            <th class="py-2 px-2 font-medium text-emerald-400">Мережа CDN</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-300">
+                        <tr>
+                            <td class="py-2.5 px-2 font-medium">Затримка (Ping)</td>
+                            <td class="py-2.5 px-2 text-amber-400/90">Висока (100-300мс)</td>
+                            <td class="py-2.5 px-2 text-emerald-400 font-semibold">Мінімальна (5-20мс)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-2 font-medium">Навантаження на Origin</td>
+                            <td class="py-2.5 px-2 text-amber-400/90">100% запитів</td>
+                            <td class="py-2.5 px-2 text-emerald-400 font-semibold">5-10% (Економія 90%+)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-2 font-medium">Стійкість до DDoS</td>
+                            <td class="py-2.5 px-2 text-amber-400/90">Вразливий до піків</td>
+                            <td class="py-2.5 px-2 text-emerald-400 font-semibold">Високий захист</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-2 font-medium">Швидкість завантаження</td>
+                            <td class="py-2.5 px-2 text-amber-400/90">Залежить від відстані</td>
+                            <td class="py-2.5 px-2 text-emerald-400 font-semibold">Миттєво по світу</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- INTERACTIVE CDN QUIZ TRAINER -->
+    <div class="glass-panel rounded-2xl p-6 border border-slate-800 mb-8">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+                <h3 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-cyan-400"></i> Експрес-тестування знань про CDN
+                </h3>
+                <p class="text-xs text-slate-400">Перевірте, наскільки добре ви засвоїли принципи роботи CDN</p>
+            </div>
+            <div id="quizScoreBadge" class="text-xs font-bold px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                Рахунок: 0 / 3
+            </div>
+        </div>
+
+        <div id="quizContainer" class="mt-5 space-y-6">
+            <!-- Question item inserted via JS -->
+        </div>
+    </div>
+
+</main>
+
+<footer class="border-t border-slate-800 bg-slate-900/60 py-6 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4">
+        Інтерактивний навчальний симулятор CDN • Створено для демонстрації мережевої архітектури та оптимізації вебу
+    </div>
+</footer>
+
+<script>
+// SIMULATION STATE & DATA CONFIG
+const state = {
+    cdnEnabled: true,
+    userLocationKey: 'tokyo',
+    originLocationKey: 'ny',
+    payloadTypeKey: 'webpage',
+    cacheStatus: 'hit', // 'hit' or 'miss'
+    packets: [], // Active visual particles on canvas
+    trafficCount: 0,
+    stressInterval: null,
+    isStressTesting: false,
+    lastFrameTime: 0,
+    quizScore: 0,
+    quizAnswered: {}
+};
+
+// Locations with coordinates relative to canvas (pct X, Y)
+const LOCATIONS = {
+    tokyo: { name: 'Токіо, Японія', distToNy: 10800, distToFrankfurt: 9300, pingToNy: 160, pingToFrankfurt: 190, edgePing: 4, canvasUserPos: { x: 0.15, y: 0.4 } },
+    sydney: { name: 'Сідней, Австралія', distToNy: 16000, distToFrankfurt: 16500, pingToNy: 220, pingToFrankfurt: 260, edgePing: 5, canvasUserPos: { x: 0.15, y: 0.75 } },
+    london: { name: 'Лондон, Великобританія', distToNy: 5500, distToFrankfurt: 600, pingToNy: 70, pingToFrankfurt: 18, edgePing: 3, canvasUserPos: { x: 0.15, y: 0.25 } },
+    kyiv: { name: 'Київ, Україна', distToNy: 7500, distToFrankfurt: 1500, pingToNy: 90, pingToFrankfurt: 32, edgePing: 4, canvasUserPos: { x: 0.15, y: 0.55 } },
+    saopaulo: { name: 'Сан-Паулу, Бразилія', distToNy: 7700, distToFrankfurt: 9800, pingToNy: 110, pingToFrankfurt: 210, edgePing: 5, canvasUserPos: { x: 0.15, y: 0.85 } }
+};
+
+const ORIGINS = {
+    ny: { name: 'Нью-Йорк, США', canvasPos: { x: 0.85, y: 0.5 } },
+    frankfurt: { name: 'Франкфурт, Німеччина', canvasPos: { x: 0.85, y: 0.3 } }
+};
+
+const PAYLOADS = {
+    api: { name: 'JSON API', sizeKb: 15, sizeText: '15 КБ', serverProcessTime: 10 },
+    webpage: { name: 'Веб-сторінка', sizeKb: 2500, sizeText: '2.5 МБ', serverProcessTime: 25 },
+    video: { name: 'HD Відео потік', sizeKb: 25000, sizeText: '25 МБ', serverProcessTime: 50 }
+};
+
+const QUIZ_QUESTIONS = [
+    {
+        id: 1,
+        question: "1. Що відбувається, коли клієнт запитує файл у режимі 'Cache HIT' на CDN?",
+        options: [
+            "Сервер Edge сам відразу віддає файл клієнту з пам'яті без звернення до Origin",
+            "CDN перенаправляє запит на головний сервер Origin у Нью-Йорк",
+            "Сервер Edge видаляє файл зі свого кешу"
+        ],
+        correct: 0,
+        explain: "Правильно! Cache HIT означає, що копіювання з Origin не потрібне — файл віддається з найближчого сервера Edge миттєво."
+    },
+    {
+        id: 2,
+        question: "2. Який етап Waterfall завантаження оптимізується найсильніше завдяки близькості Edge-сервера?",
+        options: [
+            "Тільки розмір файлу",
+            "Встановлення TCP з'єднання та TLS/SSL рукостискання (Handshake)",
+            "Швидкість читання файлу з жорсткого диска Origin"
+        ],
+        correct: 1,
+        explain: "Вірно! Фази RTT (TCP/TLS handshake) вимагають кількох кіл обміну сигналами. Скорочення відстані з 10,000 км до 10 км економить сотні мілісекунд."
+    },
+    {
+        id: 3,
+        question: "3. Як CDN допомагає захистити сайт під час масової DDoS-атаки?",
+        options: [
+            "CDN відключає сайт від мережі Інтернет",
+            "CDN блокує всіх користувачів без винятку",
+            "CDN приймає гігантський потік запитів на сотні своїх вузлів і фільтрує зловмисний трафік"
+        ],
+        correct: 2,
+        explain: "Відмінно! CDN працює як величезний розподілений щит, поглинаючи та фільтруючи терабіти атакуючого трафіку."
+    }
+];
+
+let originChart = null;
+let canvas = null, ctx = null;
+
+function initCanvas() {
+    canvas = document.getElementById('networkCanvas');
+    if (!canvas) return;
+    ctx = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+}
+
+function resizeCanvas() {
+    if (!canvas) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    if (ctx) ctx.scale(dpr, dpr);
+}
+
+// Particle class for data packet visualizer
+class DataPacket {
+    constructor(fromPos, toPos, color, speed, label, onComplete) {
+        this.from = { ...fromPos };
+        this.to = { ...toPos };
+        this.current = { ...fromPos };
+        this.color = color;
+        this.speed = speed;
+        this.progress = 0;
+        this.label = label;
+        this.onComplete = onComplete;
+        this.size = 5;
+    }
+
+    update(deltaMs = 16.67) {
+        this.progress += this.speed * ((deltaMs || 16.67) / 16.67);
+        if (this.progress >= 1) {
+            this.progress = 1;
+            if (this.onComplete) this.onComplete();
+            return false;
+        }
+        this.current.x = this.from.x + (this.to.x - this.from.x) * this.progress;
+        this.current.y = this.from.y + (this.to.y - this.from.y) * this.progress;
+        return true;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(this.current.x, this.current.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 12;
+        ctx.fill();
+
+        if (this.label) {
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = '10px JetBrains Mono';
+            ctx.fillText(this.label, this.current.x + 8, this.current.y - 6);
+        }
+        ctx.restore();
+    }
+}
+
+function calculateMetrics() {
+    const userLoc = LOCATIONS[state.userLocationKey];
+    const payload = PAYLOADS[state.payloadTypeKey];
+    const isNy = state.originLocationKey === 'ny';
+    const dist = isNy ? userLoc.distToNy : userLoc.distToFrankfurt;
+    const directPing = isNy ? userLoc.pingToNy : userLoc.pingToFrankfurt;
+    const edgePing = userLoc.edgePing;
+    const bandwidthMbps = 100;
+    const sizeMb = (payload.sizeKb * 8) / 1000;
+    const rawTransferTimeMs = (sizeMb / bandwidthMbps) * 1000;
+
+    let ping, dnsTime, tcpTime, tlsTime, ttfb, downloadTime;
+    if (!state.cdnEnabled) {
+        ping = directPing;
+        dnsTime = Math.max(2, Math.round(ping * 0.15));
+        tcpTime = Math.max(1, Math.round(ping / 2));
+        tlsTime = Math.max(2, Math.round(ping));
+        ttfb = payload.serverProcessTime;
+        downloadTime = Math.round(rawTransferTimeMs);
+    } else if (state.cacheStatus === 'hit') {
+        ping = edgePing;
+        dnsTime = 2;
+        tcpTime = Math.max(1, Math.round(edgePing / 2));
+        tlsTime = Math.max(2, Math.round(edgePing));
+        ttfb = 5;
+        downloadTime = Math.round(rawTransferTimeMs);
+    } else {
+        ping = edgePing;
+        dnsTime = 3;
+        tcpTime = Math.max(1, Math.round(edgePing / 2));
+        tlsTime = Math.max(2, Math.round(edgePing));
+        ttfb = payload.serverProcessTime + directPing;
+        downloadTime = Math.round(rawTransferTimeMs + directPing * 0.3);
+    }
+    return { ping, dnsTime, tcpTime, tlsTime, ttfb, downloadTime,
+             totalTime: dnsTime + tcpTime + tlsTime + ttfb + downloadTime,
+             dist, payload, directPing, edgePing };
+}
+
+function updateUI() {
+    const m = calculateMetrics();
+
+    document.getElementById('nodeUserLocation').innerText = LOCATIONS[state.userLocationKey].name;
+    document.getElementById('nodeOriginLocation').innerText = ORIGINS[state.originLocationKey].name;
+    document.getElementById('canvasDistance').innerText = `${m.dist.toLocaleString()} км`;
+    document.getElementById('canvasRtt').innerText = `${m.ping} мс`;
+    document.getElementById('edgeIp').innerText = `Затримка до клієнта: ~${m.edgePing} мс`;
+
+    document.getElementById('metricTotalTime').innerText = `${m.totalTime} ms`;
+    document.getElementById('metricTtfb').innerText = `${m.ttfb} ms`;
+    document.getElementById('metricPing').innerText = `${m.ping} ms`;
+    document.getElementById('waterfallSizeText').innerText = m.payload.sizeText;
+
+    const savedCdn = state.cdnEnabled;
+    state.cdnEnabled = false;
+    const directMetrics = calculateMetrics();
+    state.cdnEnabled = savedCdn;
+
+    if (state.cdnEnabled) {
+        const savedMs = directMetrics.totalTime - m.totalTime;
+        const savedPct = Math.max(0, Math.round((savedMs / directMetrics.totalTime) * 100));
+        document.getElementById('metricTimeSaved').innerText = `-${savedPct}% часу`;
+        document.getElementById('metricTimeSaved').className = "text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+        document.getElementById('timeCompareNote').innerText = `З CDN швидше на ${savedMs > 0 ? savedMs : 0} мс`;
+        
+        const offload = state.cacheStatus === 'hit' ? 95 : 0;
+        document.getElementById('offloadPercent').innerText = `${offload}%`;
+        document.getElementById('offloadBar').style.width = `${offload}%`;
+        document.getElementById('originLoad').innerText = state.cacheStatus === 'hit' ? 'Завантаження CPU: 4%' : 'Завантаження CPU: 42%';
+        document.getElementById('nodeEdgeLocation').innerText = LOCATIONS[state.userLocationKey].name.split(',')[0] + ' Edge POP #4';
+    } else {
+        document.getElementById('metricTimeSaved').innerText = `Базовий режим`;
+        document.getElementById('metricTimeSaved').className = "text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20";
+        document.getElementById('timeCompareNote').innerText = `Пряме підключення до Origin без кешу`;
+        document.getElementById('offloadPercent').innerText = `0%`;
+        document.getElementById('offloadBar').style.width = `0%`;
+        document.getElementById('originLoad').innerText = 'Завантаження CPU: 78%';
+    }
+
+    const maxT = Math.max(m.totalTime, 1);
+    document.getElementById('dnsTimeText').innerText = `${m.dnsTime} ms`;
+    document.getElementById('dnsBar').style.width = `${Math.max(3, (m.dnsTime / maxT) * 100)}%`;
+
+    document.getElementById('tcpTimeText').innerText = `${m.tcpTime} ms`;
+    document.getElementById('tcpBar').style.width = `${Math.max(3, (m.tcpTime / maxT) * 100)}%`;
+
+    document.getElementById('tlsTimeText').innerText = `${m.tlsTime} ms`;
+    document.getElementById('tlsBar').style.width = `${Math.max(3, (m.tlsTime / maxT) * 100)}%`;
+
+    document.getElementById('ttfbTimeText').innerText = `${m.ttfb} ms`;
+    document.getElementById('ttfbBar').style.width = `${Math.max(3, (m.ttfb / maxT) * 100)}%`;
+
+    document.getElementById('downloadTimeText').innerText = `${m.downloadTime} ms`;
+    document.getElementById('downloadBar').style.width = `${Math.max(5, (m.downloadTime / maxT) * 100)}%`;
+
+    const edgeCard = document.getElementById('edgeNodeCard');
+    const edgeLegend = document.getElementById('edgeLegend');
+    const cacheBadge = document.getElementById('cacheBadge');
+
+    if (state.cdnEnabled) {
+        edgeCard.style.opacity = '1';
+        edgeLegend.style.opacity = '1';
+        if (state.cacheStatus === 'hit') {
+            cacheBadge.innerText = 'HIT';
+            cacheBadge.className = 'text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-semibold';
+        } else {
+            cacheBadge.innerText = 'MISS';
+            cacheBadge.className = 'text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold';
+        }
+    } else {
+        edgeCard.style.opacity = '0.3';
+        edgeLegend.style.opacity = '0.3';
+        cacheBadge.innerText = 'ВІДКЛ';
+        cacheBadge.className = 'text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-500 font-semibold';
+    }
+}
+
+function drawScene() {
+    if (!ctx || !canvas) return;
+
+    const rect = canvas.parentElement.getBoundingClientRect();
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    const w = rect.width;
+    const h = rect.height;
+
+    const userLoc = LOCATIONS[state.userLocationKey];
+    const originLoc = ORIGINS[state.originLocationKey];
+
+    const userPos = { x: w * userLoc.canvasUserPos.x, y: h * userLoc.canvasUserPos.y };
+    const originPos = { x: w * originLoc.canvasPos.x, y: h * originLoc.canvasPos.y };
+    const edgePos = { x: w * 0.48, y: h * 0.45 };
+
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+
+    if (!state.cdnEnabled) {
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(userPos.x, userPos.y);
+        ctx.lineTo(originPos.x, originPos.y);
+        ctx.stroke();
+    } else {
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+        ctx.beginPath();
+        ctx.moveTo(userPos.x, userPos.y);
+        ctx.lineTo(edgePos.x, edgePos.y);
+        ctx.stroke();
+
+        ctx.strokeStyle = state.cacheStatus === 'miss' ? 'rgba(245, 158, 11, 0.6)' : 'rgba(100, 116, 139, 0.2)';
+        ctx.beginPath();
+        ctx.moveTo(edgePos.x, edgePos.y);
+        ctx.lineTo(originPos.x, originPos.y);
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    drawNode(ctx, userPos, '#3b82f6', 'Клієнт', userLoc.name);
+    if (state.cdnEnabled) {
+        const edgeColor = state.cacheStatus === 'hit' ? '#10b981' : '#f59e0b';
+        drawNode(ctx, edgePos, edgeColor, 'Edge POP', 'CDN Кеш Сервер');
+    }
+    drawNode(ctx, originPos, '#f59e0b', 'Origin', originLoc.name);
+
+    const now = performance.now();
+    const deltaMs = state.lastFrameTime ? Math.min(now - state.lastFrameTime, 50) : 16.67;
+    state.lastFrameTime = now;
+    state.packets = state.packets.filter(p => p.update(deltaMs));
+    state.packets.forEach(p => p.draw(ctx));
+
+    document.getElementById('activePacketCount').innerText = `Пакети: ${state.packets.length}`;
+    requestAnimationFrame(drawScene);
+}
+
+function drawNode(ctx, pos, color, title, subtitle) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 22, 0, Math.PI * 2);
+    ctx.fillStyle = color + '22';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 16, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 12px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, pos.x, pos.y - 24);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px Inter';
+    ctx.fillText(subtitle, pos.x, pos.y + 32);
+    ctx.restore();
+}
+
+function sendSingleRequest() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
+    const userLoc = LOCATIONS[state.userLocationKey];
+    const originLoc = ORIGINS[state.originLocationKey];
+
+    const userPos = { x: w * userLoc.canvasUserPos.x, y: h * userLoc.canvasUserPos.y };
+    const originPos = { x: w * originLoc.canvasPos.x, y: h * originLoc.canvasPos.y };
+    const edgePos = { x: w * 0.48, y: h * 0.45 };
+
+    if (!state.cdnEnabled) {
+        state.packets.push(new DataPacket(userPos, originPos, '#f59e0b', 0.015, 'GET /file', () => {
+            state.packets.push(new DataPacket(originPos, userPos, '#3b82f6', 0.015, '200 OK (Origin)', null));
+            recordOriginHit();
+        }));
+    } else {
+        if (state.cacheStatus === 'hit') {
+            state.packets.push(new DataPacket(userPos, edgePos, '#10b981', 0.05, 'GET /file', () => {
+                state.packets.push(new DataPacket(edgePos, userPos, '#10b981', 0.05, '200 OK (Edge HIT)', null));
+                recordEdgeHit();
+            }));
+        } else {
+            state.packets.push(new DataPacket(userPos, edgePos, '#10b981', 0.04, 'GET /file', () => {
+                state.packets.push(new DataPacket(edgePos, originPos, '#f59e0b', 0.02, 'Fetch Origin', () => {
+                    recordOriginHit();
+                    state.packets.push(new DataPacket(originPos, edgePos, '#f59e0b', 0.02, 'Stream to Edge', () => {
+                        state.packets.push(new DataPacket(edgePos, userPos, '#10b981', 0.04, '200 OK (Кеш збережено)', null));
+                    }));
+                }));
+            }));
+        }
+    }
+}
+
+function sendBurstRequests(count = 10) {
+    for (let i = 0; i < count; i++) {
+        setTimeout(() => {
+            sendSingleRequest();
+        }, i * 120);
+    }
+}
+
+function toggleStressTest() {
+    const btn = document.getElementById('btnStressTest');
+    if (state.isStressTesting) {
+        clearInterval(state.stressInterval);
+        state.isStressTesting = false;
+        btn.innerHTML = '<i class="fa-solid fa-fire"></i> Стрес-тест';
+        btn.className = "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-xs py-2.5 px-3 rounded-xl border border-amber-500/30 transition flex items-center justify-center gap-1 active:scale-95";
+    } else {
+        state.isStressTesting = true;
+        btn.innerHTML = '<i class="fa-solid fa-stop"></i> Зупинити';
+        btn.className = "bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold text-xs py-2.5 px-3 rounded-xl border border-red-500/40 transition flex items-center justify-center gap-1 active:scale-95 animate-pulse";
+        
+        state.stressInterval = setInterval(() => {
+            sendSingleRequest();
+        }, 150);
+    }
+}
+
+let originRequestsCount = 0;
+let edgeRequestsCount = 0;
+
+function initChart() {
+    const chartCanvas = document.getElementById('loadChart');
+    if (!chartCanvas || typeof Chart === 'undefined') return;
+    const ctxChart = chartCanvas.getContext('2d');
+    
+    originChart = new Chart(ctxChart, {
+        type: 'line',
+        data: {
+            labels: Array(15).fill(''),
+            datasets: [
+                {
+                    label: 'Навантаження Origin (RPS)',
+                    data: Array(15).fill(0),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2
+                },
+                {
+                    label: 'Оброблено Edge CDN',
+                    data: Array(15).fill(0),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { display: false },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    setInterval(() => {
+        if (!originChart) return;
+        originChart.data.datasets[0].data.shift();
+        originChart.data.datasets[0].data.push(originRequestsCount);
+        originChart.data.datasets[1].data.shift();
+        originChart.data.datasets[1].data.push(edgeRequestsCount);
+        originChart.update('none');
+
+        originRequestsCount = 0;
+        edgeRequestsCount = 0;
+    }, 1000);
+}
+
+function recordOriginHit() { originRequestsCount += 1; }
+function recordEdgeHit() { edgeRequestsCount += 1; }
+
+function handleToggleCDN(checked) {
+    state.cdnEnabled = checked;
+    const statusBadge = document.getElementById('statusBadge');
+    const modeTitle = document.getElementById('modeTitle');
+    const modeDesc = document.getElementById('modeDesc');
+
+    if (checked) {
+        statusBadge.className = "w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl font-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-bolt"></i>';
+        modeTitle.innerText = "CDN увімкнено (Кешування на Edge)";
+        modeDesc.innerText = "Запити користувачів перехоплюються найближчим крайовим сервером (Edge POP).";
+    } else {
+        statusBadge.className = "w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xl font-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-globe"></i>';
+        modeTitle.innerText = "Без CDN (Пряме підключення до Origin)";
+        modeDesc.innerText = "Кожен запит відправляється безпосередньо на єдиний головний сервер (Origin) через весь світ.";
+    }
+
+    const cacheSelect = document.getElementById('cacheStatusSelect');
+    cacheSelect.disabled = !checked;
+    cacheSelect.classList.toggle('opacity-50', !checked);
+    updateUI();
+}
+
+function updateSimulationParams() {
+    state.userLocationKey = document.getElementById('userLocationSelect').value;
+    state.originLocationKey = document.getElementById('originLocationSelect').value;
+    state.payloadTypeKey = document.getElementById('payloadSelect').value;
+    state.cacheStatus = document.getElementById('cacheStatusSelect').value;
+    updateUI();
+}
+
+function applyPreset(presetKey) {
+    if (presetKey === 'custom') return;
+
+    if (presetKey === 'tokyo-video') {
+        document.getElementById('cdnToggle').checked = true;
+        handleToggleCDN(true);
+        document.getElementById('userLocationSelect').value = 'tokyo';
+        document.getElementById('payloadSelect').value = 'video';
+        document.getElementById('cacheStatusSelect').value = 'hit';
+    } else if (presetKey === 'london-api') {
+        document.getElementById('cdnToggle').checked = true;
+        handleToggleCDN(true);
+        document.getElementById('userLocationSelect').value = 'london';
+        document.getElementById('payloadSelect').value = 'api';
+        document.getElementById('cacheStatusSelect').value = 'hit';
+    } else if (presetKey === 'sydney-web') {
+        document.getElementById('cdnToggle').checked = true;
+        handleToggleCDN(true);
+        document.getElementById('userLocationSelect').value = 'sydney';
+        document.getElementById('payloadSelect').value = 'webpage';
+        document.getElementById('cacheStatusSelect').value = 'hit';
+    } else if (presetKey === 'cache-miss') {
+        document.getElementById('cdnToggle').checked = true;
+        handleToggleCDN(true);
+        document.getElementById('userLocationSelect').value = 'tokyo';
+        document.getElementById('payloadSelect').value = 'webpage';
+        document.getElementById('cacheStatusSelect').value = 'miss';
+    }
+
+    updateSimulationParams();
+    sendBurstRequests(5);
+}
+
+function resetSimulation() {
+    if (state.isStressTesting) toggleStressTest();
+    state.packets = [];
+    state.lastFrameTime = 0;
+    originRequestsCount = 0;
+    edgeRequestsCount = 0;
+    state.quizScore = 0;
+    state.quizAnswered = {};
+    document.getElementById('presetSelect').value = 'custom';
+    document.getElementById('cdnToggle').checked = true;
+    handleToggleCDN(true);
+    document.getElementById('userLocationSelect').value = 'tokyo';
+    document.getElementById('originLocationSelect').value = 'ny';
+    document.getElementById('payloadSelect').value = 'webpage';
+    document.getElementById('cacheStatusSelect').value = 'hit';
+    updateSimulationParams();
+    renderQuiz();
+    document.getElementById('quizScoreBadge').innerText = `Рахунок: 0 / ${QUIZ_QUESTIONS.length}`;
+}
+
+function renderQuiz() {
+    const container = document.getElementById('quizContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    QUIZ_QUESTIONS.forEach((q) => {
+        const qEl = document.createElement('div');
+        qEl.className = "bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-3";
+        
+        let optionsHtml = q.options.map((opt, idx) => `
+            <button onclick="answerQuiz(${q.id}, ${idx})" id="q_${q.id}_opt_${idx}" class="w-full text-left p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500/50 text-xs text-slate-300 transition flex items-center justify-between">
+                <span>${opt}</span>
+                <i class="fa-regular fa-circle text-slate-600"></i>
+            </button>
+        `).join('');
+
+        qEl.innerHTML = `
+            <div class="font-bold text-sm text-slate-200">${q.question}</div>
+            <div class="space-y-2">${optionsHtml}</div>
+            <div id="q_${q.id}_explain" class="hidden p-3 rounded-lg text-xs leading-relaxed"></div>
+        `;
+        container.appendChild(qEl);
+    });
+}
+
+function answerQuiz(qId, selectedIdx) {
+    if (state.quizAnswered[qId]) return;
+
+    const q = QUIZ_QUESTIONS.find(item => item.id === qId);
+    state.quizAnswered[qId] = true;
+
+    const explainEl = document.getElementById(`q_${qId}_explain`);
+    explainEl.classList.remove('hidden');
+
+    if (selectedIdx === q.correct) {
+        state.quizScore += 1;
+        explainEl.className = "p-3 rounded-lg text-xs leading-relaxed bg-emerald-500/10 border border-emerald-500/30 text-emerald-300";
+        explainEl.innerHTML = `<i class="fa-solid fa-circle-check mr-1.5"></i> ${q.explain}`;
+        
+        const btn = document.getElementById(`q_${qId}_opt_${selectedIdx}`);
+        btn.className = "w-full text-left p-3 rounded-lg bg-emerald-500/20 border border-emerald-500 text-xs text-emerald-200 font-medium flex items-center justify-between";
+        btn.querySelector('i').className = "fa-solid fa-check text-emerald-400";
+    } else {
+        explainEl.className = "p-3 rounded-lg text-xs leading-relaxed bg-red-500/10 border border-red-500/30 text-red-300";
+        explainEl.innerHTML = `<i class="fa-solid fa-circle-xmark mr-1.5"></i> Невірно. ${q.explain}`;
+
+        const btn = document.getElementById(`q_${qId}_opt_${selectedIdx}`);
+        btn.className = "w-full text-left p-3 rounded-lg bg-red-500/20 border border-red-500 text-xs text-red-200 flex items-center justify-between";
+        btn.querySelector('i').className = "fa-solid fa-xmark text-red-400";
+
+        const correctBtn = document.getElementById(`q_${qId}_opt_${q.correct}`);
+        correctBtn.className = "w-full text-left p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-xs text-emerald-300 flex items-center justify-between";
+    }
+
+    document.getElementById('quizScoreBadge').innerText = `Рахунок: ${state.quizScore} / ${QUIZ_QUESTIONS.length}`;
+}
+
+function runSimulationTests() {
+    const savedConfig = {
+        cdnEnabled: state.cdnEnabled,
+        userLocationKey: state.userLocationKey,
+        originLocationKey: state.originLocationKey,
+        payloadTypeKey: state.payloadTypeKey,
+        cacheStatus: state.cacheStatus
+    };
+    state.packets = [];
+
+    const results = [];
+    const test = (name, fn) => {
+        try {
+            const value = fn();
+            results.push({ name, ok: value === true, detail: value === true ? 'PASS' : 'FAIL' });
+        } catch (e) {
+            results.push({ name, ok: false, detail: `ERROR: ${e.message}` });
+        }
+    };
+
+    state.userLocationKey = 'london'; state.payloadTypeKey = 'api'; state.cacheStatus = 'hit'; state.cdnEnabled = false;
+    state.originLocationKey = 'ny'; const ny = calculateMetrics();
+    state.originLocationKey = 'frankfurt'; const fra = calculateMetrics();
+    test('Вибір Origin змінює distance/RTT', () => ny.dist !== fra.dist && ny.directPing !== fra.directPing);
+
+    state.originLocationKey = 'ny'; state.cdnEnabled = false; const direct = calculateMetrics().totalTime;
+    state.cdnEnabled = true; state.cacheStatus = 'hit'; const hit = calculateMetrics().totalTime;
+    test('CDN HIT швидше за прямий запит', () => hit < direct);
+
+    const hitM = calculateMetrics(); state.cacheStatus = 'miss'; const missM = calculateMetrics();
+    test('Cache MISS повільніший за HIT', () => missM.totalTime > hitM.totalTime);
+
+    state.cacheStatus = 'hit'; state.payloadTypeKey = 'api'; const small = calculateMetrics().downloadTime;
+    state.payloadTypeKey = 'video'; const large = calculateMetrics().downloadTime;
+    test('Більший payload збільшує download time', () => large > small);
+
+    test('Packet animation використовує delta time', () => {
+        const packet = new DataPacket({ x: 0, y: 0 }, { x: 1, y: 1 }, '#fff', 0.01, '', null);
+        packet.update(33.34);
+        return packet.progress > 0.019 && packet.progress < 0.021;
+    });
+
+    Object.assign(state, savedConfig);
+    document.getElementById('cdnToggle').checked = state.cdnEnabled;
+    document.getElementById('userLocationSelect').value = state.userLocationKey;
+    document.getElementById('originLocationSelect').value = state.originLocationKey;
+    document.getElementById('payloadSelect').value = state.payloadTypeKey;
+    document.getElementById('cacheStatusSelect').value = state.cacheStatus;
+    
+    handleToggleCDN(state.cdnEnabled);
+    updateSimulationParams();
+
+    const passed = results.filter(r => r.ok).length;
+    document.getElementById('testSummary').innerHTML = `<span class="${passed === results.length ? 'text-emerald-400' : 'text-red-400'} font-bold">${passed}/${results.length} тестів пройдено</span>`;
+    document.getElementById('testResults').innerHTML = results.map(r => `<div class="flex items-center gap-2 p-2.5 rounded-lg bg-slate-900 border border-slate-800"><i class="fa-solid ${r.ok ? 'fa-circle-check text-emerald-400' : 'fa-circle-xmark text-red-400'}"></i><span class="text-slate-300">${r.name}</span><span class="ml-auto font-mono ${r.ok ? 'text-emerald-400' : 'text-red-400'}">${r.detail}</span></div>`).join('');
+}
+
+function initApp() {
+    initCanvas();
+    initChart();
+    renderQuiz();
+    updateUI();
+    drawScene();
+
+    const testBtn = document.getElementById('runSimulationTestsBtn');
+    if (testBtn) {
+        testBtn.onclick = (e) => {
+            e.preventDefault();
+            runSimulationTests();
+        };
+    }
+
+    setTimeout(() => {
+        sendBurstRequests(3);
+    }, 500);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
+</script>
+</body>
+</html>
